@@ -1,5 +1,3 @@
-// ── Database row types ───────────────────────────────────────
-
 export interface Profile {
   id: string
   email: string | null
@@ -11,13 +9,13 @@ export interface Profile {
 export interface Transaction {
   id: string
   user_id: string
-  date: string          // ISO date: '2025-03-22'
+  date: string
   description: string
-  amount: number        // positive = credit, negative = debit
+  amount: number
   currency: string
   account: string
   category: string
-  confidence: number    // 0–1
+  confidence: number
   reviewed: boolean
   notes: string | null
   group_id: string | null
@@ -62,8 +60,6 @@ export interface Reimbursement {
   created_at: string
 }
 
-// ── App-level types ───────────────────────────────────────────
-
 export interface ParsedTransaction {
   date: string
   description: string
@@ -75,7 +71,7 @@ export interface ParsedTransaction {
   reviewed: boolean
 }
 
-export type BankId = 'revolut' | 'wise' | 'lloyds' | 'asb' | 'monzo'
+export type BankId = 'revolut' | 'wise' | 'lloyds' | 'asb' | 'monzo' | 'starling'
 
 export interface BankDefinition {
   id: BankId
@@ -92,11 +88,11 @@ export interface CategoryDefinition {
 }
 
 export interface FxRates {
-  [currency: string]: number   // rate to convert FROM that currency TO base
+  [currency: string]: number
 }
 
 export interface MonthlyStats {
-  month: string     // 'YYYY-MM'
+  month: string
   income: number
   spend: number
   saved: number
