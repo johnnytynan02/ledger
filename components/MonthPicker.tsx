@@ -3,11 +3,10 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { MONTHS } from '@/lib/categories'
 
 interface Props {
-  selected: string   // 'YYYY-MM'
-  available?: string[]
+  selected: string
+  available?: string[]  // 'YYYY-MM' list — if empty falls back to last 12
 }
 
-// Generate last 12 months
 function last12(): string[] {
   const months: string[] = []
   const d = new Date()
@@ -23,7 +22,7 @@ export default function MonthPicker({ selected, available }: Props) {
   const pathname = usePathname()
   const params = useSearchParams()
 
-  const months = available ?? last12()
+  const months = available && available.length > 0 ? available : last12()
 
   const pick = (m: string) => {
     const p = new URLSearchParams(params.toString())
@@ -38,21 +37,14 @@ export default function MonthPicker({ selected, available }: Props) {
         const label = `${MONTHS[parseInt(mo) - 1]} ${y}`
         const active = m === selected
         return (
-          <button
-            key={m}
-            onClick={() => pick(m)}
-            style={{
-              padding: '5px 12px',
-              borderRadius: 20,
-              fontSize: 12,
-              cursor: 'pointer',
-              border: `0.5px solid ${active ? 'var(--acc)' : 'var(--bd)'}`,
-              background: active ? 'var(--acc)' : 'transparent',
-              color: active ? '#fff' : 'var(--mu)',
-              fontWeight: active ? 500 : 400,
-              transition: 'all .12s',
-            }}
-          >
+          <button key={m} onClick={() => pick(m)} style={{
+            padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+            border: `0.5px solid ${active ? 'var(--acc)' : 'var(--bd)'}`,
+            background: active ? 'var(--acc)' : 'transparent',
+            color: active ? '#fff' : 'var(--mu)',
+            fontWeight: active ? 500 : 400,
+            transition: 'all .12s',
+          }}>
             {label}
           </button>
         )

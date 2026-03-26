@@ -16,14 +16,12 @@ export const CATEGORIES: CategoryDefinition[] = [
   { id: 'uncategorised',  label: 'Uncategorised',       color: '#5F5E5A' },
 ]
 
-// Custom categories stored in localStorage
 const CUSTOM_KEY = 'ledger_custom_categories'
 
 export function getCustomCategories(): CategoryDefinition[] {
   if (typeof window === 'undefined') return []
-  try {
-    return JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '[]')
-  } catch { return [] }
+  try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? '[]') }
+  catch { return [] }
 }
 
 export function saveCustomCategory(cat: CategoryDefinition) {
@@ -35,21 +33,20 @@ export function saveCustomCategory(cat: CategoryDefinition) {
 
 export function deleteCustomCategory(id: string) {
   if (typeof window === 'undefined') return
-  const existing = getCustomCategories()
-  localStorage.setItem(CUSTOM_KEY, JSON.stringify(existing.filter(c => c.id !== id)))
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(getCustomCategories().filter(c => c.id !== id)))
 }
 
 export function getAllCategories(): CategoryDefinition[] {
   return [...CATEGORIES, ...getCustomCategories()]
 }
 
-export const CATEGORY_MAP = Object.fromEntries(
-  CATEGORIES.map(c => [c.id, c])
-) as Record<string, CategoryDefinition>
+export const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c])) as Record<string, CategoryDefinition>
 
 export const getCategory = (id: string): CategoryDefinition => {
-  const custom = getCustomCategories().find(c => c.id === id)
-  if (custom) return custom
+  if (typeof window !== 'undefined') {
+    const custom = getCustomCategories().find(c => c.id === id)
+    if (custom) return custom
+  }
   return CATEGORY_MAP[id] ?? CATEGORY_MAP['uncategorised']
 }
 
@@ -60,6 +57,7 @@ export const BANKS: BankDefinition[] = [
   { id: 'asb',      label: 'ASB Bank (NZD)', hint: 'My accounts > Export',         currencies: ['NZD'] },
   { id: 'monzo',    label: 'Monzo',          hint: 'Transaction history > Export', currencies: ['GBP'] },
   { id: 'starling', label: 'Starling Bank',  hint: 'Spaces > Download CSV',        currencies: ['GBP'] },
+  { id: 'other',    label: 'Other bank',     hint: 'Map your own CSV columns',     currencies: ['GBP','EUR','USD','NZD','AUD'] },
 ]
 
 export const CURRENCIES = ['GBP', 'USD', 'EUR', 'NZD', 'AUD']
@@ -76,18 +74,10 @@ export const formatAmount = (amount: number, currency = 'GBP'): string => {
 export const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 export const DEFAULT_BUDGETS: Record<string, number> = {
-  food_dining: 200,
-  groceries: 300,
-  transport: 100,
-  shopping: 200,
-  entertainment: 80,
-  health: 60,
-  bills: 200,
-  travel: 300,
-  subscriptions: 50,
+  food_dining: 200, groceries: 300, transport: 100, shopping: 200,
+  entertainment: 80, health: 60, bills: 200, travel: 300, subscriptions: 50,
 }
 
-// Colour options for custom categories
 export const CATEGORY_COLORS = [
   '#BA7517','#3B6D11','#185FA5','#534AB7','#993556',
   '#0F6E56','#A32D2D','#0C5F80','#6B4AB7','#854F0B',
