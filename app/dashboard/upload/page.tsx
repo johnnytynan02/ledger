@@ -182,7 +182,7 @@ export default function UploadPage() {
                   ].map(({ label, key }) => (
                     <div key={key}>
                       <label style={{ fontSize: 11, color: 'var(--hi)', display: 'block', marginBottom: 4 }}>{label}</label>
-                      <select className="sel" style={{ width: '100%' }} value={(genericMapping as Record<string, number>)[key]} onChange={e => setGenericMapping(p => ({ ...p, [key]: parseInt(e.target.value) }))}>
+                      <select className="sel" style={{ width: '100%' }} value={(genericMapping as unknown as Record<string, number>)[key]} onChange={e => setGenericMapping(p => ({ ...p, [key]: parseInt(e.target.value) }))}>
                         {key === 'currency' && <option value={-1}>No currency column (use GBP)</option>}
                         {colOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>

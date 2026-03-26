@@ -71,7 +71,7 @@ export interface ParsedTransaction {
   reviewed: boolean
 }
 
-export type BankId = 'revolut' | 'wise' | 'lloyds' | 'asb' | 'monzo' | 'starling'
+export type BankId = 'revolut' | 'wise' | 'lloyds' | 'asb' | 'monzo' | 'starling' | 'other'
 
 export interface BankDefinition {
   id: BankId
