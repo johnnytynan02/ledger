@@ -75,7 +75,7 @@ export default function UploadPage() {
         body: JSON.stringify({ transactions: rows.map(r => ({ id: r._id, description: r.description, amount: r.amount, currency: r.currency })) }),
       })
       const results = await res.json()
-      if (!Array.isArray(results)) { setAiLog('AI error: unexpected response'); setAiLoading(false); return }
+      if (!Array.isArray(results)) { setAiLog('AI error: ' + (results && results.error ? results.error : JSON.stringify(results).slice(0,100))); setAiLoading(false); return }
       const map: Record<string, { category: string; confidence: number }> = {}
       results.forEach((r: { id: string; category: string; confidence: number }) => { map[r.id] = r })
       setRows(p => p.map(r => { const ai = map[r._id]; if (!ai) return r; return { ...r, category: ai.category ?? 'uncategorised', confidence: ai.confidence ?? 0, reviewed: (ai.confidence ?? 0) >= 0.85 } }))
