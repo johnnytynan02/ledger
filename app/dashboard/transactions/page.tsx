@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import MonthPicker from '@/components/MonthPicker'
 import { getAllCategories, formatAmount } from '@/lib/categories'
+import { extractKeyword, saveRule } from '@/lib/rules'
 import type { Transaction, CategoryDefinition } from '@/lib/types'
 
 function currentMonth() {
@@ -25,6 +26,7 @@ export default function TransactionsPage({ searchParams }: { searchParams: { mon
   const [saving, setSaving] = useState<string | null>(null)
   const [split, setSplit] = useState<SplitDraft | null>(null)
   const [savingSplit, setSavingSplit] = useState(false)
+  const [ruleSaved, setRuleSaved] = useState<string | null>(null)
 
   useEffect(() => { setCats(getAllCategories()) }, [])
 
@@ -46,7 +48,7 @@ export default function TransactionsPage({ searchParams }: { searchParams: { mon
 
   useEffect(() => { load() }, [load])
 
-  const updateCategory = async (id: string, category: string) => {
+  const updateCategory = async (id: string, category: string, description: string) => {
     setSaving(id)
     const res = await fetch('/api/transactions', {
       method: 'PATCH',
@@ -56,6 +58,13 @@ export default function TransactionsPage({ searchParams }: { searchParams: { mon
     if (res.ok) {
       const updated = await res.json()
       setTxns(p => p.map(t => t.id === id ? updated : t))
+      // Save rule automatically
+      const keyword = extractKeyword(description)
+      if (keyword.length > 2) {
+        await saveRule(keyword, category)
+        setRuleSaved(keyword)
+        setTimeout(() => setRuleSaved(null), 3000)
+      }
     }
     setSaving(null)
   }
@@ -138,10 +147,20 @@ export default function TransactionsPage({ searchParams }: { searchParams: { mon
 
       <MonthPicker selected={month} available={allMonths} />
 
+      {/* Rule saved toast */}
+      {ruleSaved && (
+        <div style={{ background: 'var(--grn-l)', border: '0.5px solid rgba(59,109,17,.3)', borderRadius: 'var(--radius)', padding: '8px 14px', marginBottom: 12, fontSize: 12, color: 'var(--grn)' }}>
+          ✓ Rule saved — &quot;{ruleSaved}&quot; will be auto-categorised next time
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {[{ id: 'all', label: 'All' }, { id: 'review', label: `Needs review (${needsReview.length})` }, { id: 'income', label: 'Income' }, { id: 'transfer', label: 'Transfers' }].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, cursor: 'pointer', border: `0.5px solid ${filter === f.id ? 'var(--acc)' : 'var(--bd)'}`, background: filter === f.id ? 'var(--acc-l)' : 'transparent', color: filter === f.id ? 'var(--acc)' : 'var(--mu)', fontWeight: filter === f.id ? 500 : 400 }}>{f.label}</button>
         ))}
+        <a href="/dashboard/rules" style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, border: '0.5px solid var(--bd)', color: 'var(--mu)', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+          View rules →
+        </a>
       </div>
 
       {split && (() => {
@@ -207,7 +226,8 @@ export default function TransactionsPage({ searchParams }: { searchParams: { mon
                       </td>
                       <td style={{ ...tdSt, color: 'var(--hi)', fontSize: 11 }}>{t.account}</td>
                       <td style={{ ...tdSt, minWidth: 170 }}>
-                        <select className="sel" style={{ fontSize: 11, padding: '3px 7px', width: '100%' }} value={t.category} onChange={e => updateCategory(t.id, e.target.value)}>
+                        <select className="sel" style={{ fontSize: 11, padding: '3px 7px', width: '100%' }} value={t.category}
+                          onChange={e => updateCategory(t.id, e.target.value, t.description)}>
                           {cats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                         </select>
                       </td>

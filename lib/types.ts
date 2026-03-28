@@ -103,3 +103,12 @@ export interface AICategorizationResult {
   category: string
   confidence: number
 }
+
+export interface Rule {
+  id: string
+  user_id: string
+  keyword: string
+  category: string
+  match_count: number
+  created_at: string
+}

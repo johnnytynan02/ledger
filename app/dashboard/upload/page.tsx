@@ -3,7 +3,8 @@ import { useState, useRef, useEffect } from 'react'
 import Papa from 'papaparse'
 import { BANKS, CATEGORIES, formatAmount, CATEGORY_COLORS, getCustomCategories, saveCustomCategory, deleteCustomCategory, getAllCategories } from '@/lib/categories'
 import { parseBank, getHeaders } from '@/lib/parsers'
-import type { CategoryDefinition } from '@/lib/types'
+import { fetchRules, applyRules } from '@/lib/rules'
+import type { CategoryDefinition, Rule } from '@/lib/types'
 
 let uid = 0
 const nextId = () => `u${++uid}_${Date.now()}`
@@ -28,8 +29,13 @@ export default function UploadPage() {
   const [showCustom, setShowCustom] = useState(false)
   const [newLabel, setNewLabel] = useState('')
   const [newColor, setNewColor] = useState(CATEGORY_COLORS[0])
+  const [rules, setRules] = useState<Rule[]>([])
 
-  useEffect(() => { setAllCats(getAllCategories()) }, [])
+  useEffect(() => {
+    setAllCats(getAllCategories())
+    fetchRules().then(setRules)
+  }, [])
+
   const refreshCats = () => setAllCats(getAllCategories())
 
   const addCustomCat = () => {
@@ -67,20 +73,53 @@ export default function UploadPage() {
 
   const runAI = async () => {
     if (!rows.length) return
-    setAiLoading(true); setAiLog('Sending to AI…')
+    setAiLoading(true)
+
+    // Step 1 — apply saved rules first
+    const { matched, unmatched } = applyRules(rows, rules)
+    const ruleCount = matched.length
+
+    if (unmatched.length === 0) {
+      setRows(matched)
+      setAiLog(`✓ ${ruleCount} transactions matched by your saved rules — no AI needed!`)
+      setAiLoading(false)
+      return
+    }
+
+    setAiLog(`✓ ${ruleCount} matched by rules · sending ${unmatched.length} to AI…`)
+
+    // Step 2 — send unmatched to AI
     try {
       const res = await fetch('/api/categorise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactions: rows.map(r => ({ id: r._id, description: r.description, amount: r.amount, currency: r.currency })) }),
+        body: JSON.stringify({ transactions: unmatched.map(r => ({ id: r._id, description: r.description, amount: r.amount, currency: r.currency })) }),
       })
       const results = await res.json()
-      if (!Array.isArray(results)) { setAiLog('AI error: ' + (results && results.error ? results.error : JSON.stringify(results).slice(0,100))); setAiLoading(false); return }
-      const map: Record<string, { category: string; confidence: number }> = {}
-      results.forEach((r: { id: string; category: string; confidence: number }) => { map[r.id] = r })
-      setRows(p => p.map(r => { const ai = map[r._id]; if (!ai) return r; return { ...r, category: ai.category ?? 'uncategorised', confidence: ai.confidence ?? 0, reviewed: (ai.confidence ?? 0) >= 0.85 } }))
-      setAiLog(`✓ ${results.length} transactions categorised by AI`)
-    } catch (e) { setAiLog(`AI error: ${e instanceof Error ? e.message : 'unknown'}`) }
+      if (!Array.isArray(results)) {
+        setAiLog(`Rules matched ${ruleCount} · AI error: ${results?.error ?? 'unexpected response'}`)
+        // Still apply rule matches even if AI failed
+        setRows(p => p.map(r => { const m = matched.find(x => x._id === r._id); return m ?? r }))
+        setAiLoading(false)
+        return
+      }
+
+      const aiMap: Record<string, { category: string; confidence: number }> = {}
+      results.forEach((r: { id: string; category: string; confidence: number }) => { aiMap[r.id] = r })
+
+      // Merge: rule matches + AI results
+      setRows(p => p.map(r => {
+        const ruleMatch = matched.find(x => x._id === r._id)
+        if (ruleMatch) return ruleMatch
+        const ai = aiMap[r._id]
+        if (ai) return { ...r, category: ai.category ?? 'uncategorised', confidence: ai.confidence ?? 0, reviewed: (ai.confidence ?? 0) >= 0.85 }
+        return r
+      }))
+
+      setAiLog(`✓ ${ruleCount} by rules · ${results.length} by AI`)
+    } catch (e) {
+      setAiLog(`AI error: ${e instanceof Error ? e.message : 'unknown'}`)
+    }
     setAiLoading(false)
   }
 
@@ -109,10 +148,16 @@ export default function UploadPage() {
         </div>
       )}
 
+      {rules.length > 0 && (
+        <div style={{ background: 'var(--surf)', border: '0.5px solid var(--bd)', borderRadius: 'var(--radius)', padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--mu)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{rules.length} saved rule{rules.length !== 1 ? 's' : ''} will be applied automatically before AI</span>
+          <a href="/dashboard/rules" style={{ fontSize: 11, color: 'var(--acc)' }}>View rules →</a>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 192, flexShrink: 0 }}>
 
-          {/* Bank selector */}
           <div style={{ background: 'var(--card)', border: '0.5px solid var(--bd)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
             <div style={{ fontSize: 11, color: 'var(--hi)', marginBottom: 10 }}>Select bank</div>
             {BANKS.map(b => (
@@ -123,7 +168,6 @@ export default function UploadPage() {
             ))}
           </div>
 
-          {/* Custom categories */}
           <div style={{ background: 'var(--card)', border: '0.5px solid var(--bd)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: 'var(--hi)' }}>Custom categories</div>
@@ -143,9 +187,7 @@ export default function UploadPage() {
               <div style={{ marginTop: 10 }}>
                 <input className="inp" placeholder="Category name" value={newLabel} onChange={e => setNewLabel(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCustomCat()} style={{ marginBottom: 8, fontSize: 12 }} />
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
-                  {CATEGORY_COLORS.map(c => (
-                    <div key={c} onClick={() => setNewColor(c)} style={{ width: 18, height: 18, borderRadius: 3, background: c, cursor: 'pointer', outline: newColor === c ? '2px solid var(--tx)' : 'none', outlineOffset: 1 }} />
-                  ))}
+                  {CATEGORY_COLORS.map(c => <div key={c} onClick={() => setNewColor(c)} style={{ width: 18, height: 18, borderRadius: 3, background: c, cursor: 'pointer', outline: newColor === c ? '2px solid var(--tx)' : 'none', outlineOffset: 1 }} />)}
                 </div>
                 <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 11 }} onClick={addCustomCat}>Add category</button>
               </div>
@@ -154,7 +196,6 @@ export default function UploadPage() {
         </div>
 
         <div style={{ flex: 1, minWidth: 300 }}>
-          {/* Drop zone */}
           <div style={{ background: 'var(--card)', border: '0.5px solid var(--bd)', borderRadius: 'var(--radius)', padding: '0 0 14px', marginBottom: 12 }}>
             <div
               onDragOver={e => { e.preventDefault(); setDragging(true) }}
@@ -168,18 +209,12 @@ export default function UploadPage() {
               <input ref={inputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f) }} />
             </div>
 
-            {/* Generic column mapper */}
             {bank === 'other' && rawHeaders.length > 0 && !mappingDone && (
               <div style={{ padding: '0 14px' }}>
                 <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 10, color: 'var(--acc)' }}>Map your CSV columns</div>
-                <div style={{ fontSize: 11, color: 'var(--hi)', marginBottom: 12 }}>Tell us which column contains each piece of info. We detected {rawHeaders.length} columns.</div>
+                <div style={{ fontSize: 11, color: 'var(--hi)', marginBottom: 12 }}>We detected {rawHeaders.length} columns — tell us which is which.</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-                  {[
-                    { label: 'Date column', key: 'date' },
-                    { label: 'Description column', key: 'description' },
-                    { label: 'Amount column', key: 'amount' },
-                    { label: 'Currency column (optional)', key: 'currency' },
-                  ].map(({ label, key }) => (
+                  {[{ label: 'Date column', key: 'date' }, { label: 'Description column', key: 'description' }, { label: 'Amount column', key: 'amount' }, { label: 'Currency column (optional)', key: 'currency' }].map(({ label, key }) => (
                     <div key={key}>
                       <label style={{ fontSize: 11, color: 'var(--hi)', display: 'block', marginBottom: 4 }}>{label}</label>
                       <select className="sel" style={{ width: '100%' }} value={(genericMapping as unknown as Record<string, number>)[key]} onChange={e => setGenericMapping(p => ({ ...p, [key]: parseInt(e.target.value) }))}>
@@ -194,7 +229,7 @@ export default function UploadPage() {
                   <input className="inp" placeholder="e.g. Halifax, Chase, Barclays" value={genericMapping.bankName ?? ''} onChange={e => setGenericMapping(p => ({ ...p, bankName: e.target.value }))} style={{ maxWidth: 240 }} />
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--hi)', marginBottom: 10 }}>
-                  Preview: first data row → <strong>{rawRows[1]?.[genericMapping.date]}</strong> | <strong>{rawRows[1]?.[genericMapping.description]}</strong> | <strong>{rawRows[1]?.[genericMapping.amount]}</strong>
+                  Preview: <strong>{rawRows[1]?.[genericMapping.date]}</strong> | <strong>{rawRows[1]?.[genericMapping.description]}</strong> | <strong>{rawRows[1]?.[genericMapping.amount]}</strong>
                 </div>
                 <button className="btn btn-primary" onClick={applyMapping}>Apply mapping →</button>
               </div>
@@ -205,7 +240,7 @@ export default function UploadPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{rows.length} transactions parsed</div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-primary" onClick={runAI} disabled={aiLoading} style={{ opacity: aiLoading ? 0.6 : 1 }}>{aiLoading ? 'AI categorising…' : 'AI categorise'}</button>
+                    <button className="btn btn-primary" onClick={runAI} disabled={aiLoading} style={{ opacity: aiLoading ? 0.6 : 1 }}>{aiLoading ? 'Categorising…' : 'Categorise'}</button>
                     <button className="btn btn-green" onClick={importAll} disabled={importing}>{importing ? 'Importing…' : `Import ${rows.length} →`}</button>
                   </div>
                 </div>
@@ -230,9 +265,12 @@ export default function UploadPage() {
                           {t.amount > 0 ? '+' : ''}{formatAmount(Math.abs(t.amount), t.currency)} {t.currency !== 'GBP' && t.currency}
                         </td>
                         <td style={{ padding: '6px 12px', fontSize: 12, borderBottom: '0.5px solid var(--bd)', verticalAlign: 'middle' }}>
-                          <select className="sel" style={{ fontSize: 11, padding: '3px 7px' }} value={t.category} onChange={e => setRows(p => p.map(r => r._id === t._id ? { ...r, category: e.target.value } : r))}>
-                            {allCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                          </select>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <select className="sel" style={{ fontSize: 11, padding: '3px 7px' }} value={t.category} onChange={e => setRows(p => p.map(r => r._id === t._id ? { ...r, category: e.target.value } : r))}>
+                              {allCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                            </select>
+                            {t.confidence === 1 && <span title="Matched by your rules" style={{ fontSize: 10, color: 'var(--grn)' }}>rule</span>}
+                          </div>
                         </td>
                       </tr>
                     ))}
