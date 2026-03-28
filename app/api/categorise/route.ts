@@ -4,10 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const SYSTEM = `You are a bank transaction categoriser. Return ONLY a JSON array.
-Example: [{"id":"abc","category":"groceries","confidence":0.95}]
-Valid categories: food_dining, groceries, transport, shopping, entertainment, health, bills, travel, subscriptions, income, transfer, group_expense, uncategorised`
-
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -21,10 +17,11 @@ export async function POST(req: NextRequest) {
     const msg = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2000,
-      system: SYSTEM,
       messages: [{
         role: 'user',
-        content: `Categorise these: ${JSON.stringify(
+        content: `Categorise these bank transactions. Return ONLY a raw JSON array with no markdown, no explanation. Format: [{"id":"x","category":"groceries","confidence":0.9}]
+Valid categories: food_dining, groceries, transport, shopping, entertainment, health, bills, travel, subscriptions, income, transfer, group_expense, uncategorised
+Transactions: ${JSON.stringify(
           transactions.map((t: { id: string; description: string; amount: number }) => ({
             id: t.id, desc: t.description, amount: t.amount,
           }))
@@ -32,12 +29,22 @@ export async function POST(req: NextRequest) {
       }]
     })
 
-    const raw = msg.content[0].type === 'text' ? msg.content[0].text : ''
+    // Extract text from any content block that has text
+    let raw = ''
+    for (const block of msg.content) {
+      if (block.type === 'text') { raw = block.text; break }
+    }
+
+    if (!raw) {
+      return NextResponse.json({ error: 'empty_response' }, { status: 500 })
+    }
+
     const start = raw.indexOf('[')
     const end = raw.lastIndexOf(']')
     if (start === -1 || end === -1) {
-      return NextResponse.json({ error: 'no_array' }, { status: 500 })
+      return NextResponse.json({ error: `no_array: ${raw.substring(0, 100)}` }, { status: 500 })
     }
+
     const results = JSON.parse(raw.slice(start, end + 1))
     if (!Array.isArray(results)) {
       return NextResponse.json({ error: 'not_array' }, { status: 500 })
