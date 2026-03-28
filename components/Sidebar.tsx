@@ -4,13 +4,12 @@ import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types'
 
 const NAV = [
-  { href: '/dashboard',              label: 'Dashboard'       },
-  { href: '/dashboard/transactions', label: 'Transactions'    },
-  { href: '/dashboard/upload',       label: 'Upload CSV'      },
-  { href: '/dashboard/budgets',      label: 'Budgets'         },
-  { href: '/dashboard/groups',       label: 'Group expenses'  },
-  { href: '/dashboard/insights',     label: 'Insights'        },
-  { href: '/dashboard/rules',        label: 'Your rules'      },
+  { href: '/dashboard',              label: 'Dashboard'    },
+  { href: '/dashboard/transactions', label: 'Transactions' },
+  { href: '/dashboard/upload',       label: 'Upload CSV'   },
+  { href: '/dashboard/budgets',      label: 'Budgets'      },
+  { href: '/dashboard/insights',     label: 'Insights'     },
+  { href: '/dashboard/rules',        label: 'Your rules'   },
 ]
 
 export default function Sidebar({ profile }: { profile: Profile | null }) {

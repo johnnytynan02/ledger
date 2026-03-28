@@ -15,6 +15,7 @@ interface Props {
   base: string
   selectedMonth: string
   needsReviewCount: number
+  availableMonths: string[]
 }
 
 const ttStyle = {
@@ -22,7 +23,7 @@ const ttStyle = {
   borderRadius: 8, fontSize: 12, color: 'var(--tx)',
 }
 
-export default function DashboardClient({ transactions, budgets, rates, base, selectedMonth, needsReviewCount }: Props) {
+export default function DashboardClient({ transactions, budgets, rates, base, selectedMonth, needsReviewCount, availableMonths }: Props) {
   const sym = CURRENCY_SYMBOLS[base] ?? ''
   const cv = (amount: number, ccy: string) => ccy === base ? amount : amount * (rates[ccy] ?? 1)
   const fmt = (n: number) => formatAmount(n, base)
@@ -41,7 +42,6 @@ export default function DashboardClient({ transactions, budgets, rates, base, se
   const saved = totalInc - totalSpend
   const rate = totalInc > 0 ? ((saved / totalInc) * 100).toFixed(0) : '0'
 
-  // Category spend for pie
   const catMap: Record<string, number> = {}
   expenses.forEach(t => {
     catMap[t.category] = (catMap[t.category] ?? 0) + Math.abs(cv(t.amount, t.currency))
@@ -50,7 +50,6 @@ export default function DashboardClient({ transactions, budgets, rates, base, se
     .map(([id, value]) => ({ ...getCategory(id), value: parseFloat(value.toFixed(2)) }))
     .sort((a, b) => b.value - a.value)
 
-  // Trend — last 6 months
   const trendData = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(y, m - 1 - (5 - i), 1)
     const ty = d.getFullYear(), tm = d.getMonth() + 1
@@ -83,31 +82,20 @@ export default function DashboardClient({ transactions, budgets, rates, base, se
     <div>
       <div style={{ marginBottom: 4 }}>
         <h1 style={{ fontSize: 18, fontWeight: 500 }}>Dashboard</h1>
-        <p style={{ fontSize: 12, color: 'var(--mu)', marginTop: 3 }}>
-          {MONTHS[m - 1]} {y} · live FX · base {base}
-        </p>
+        <p style={{ fontSize: 12, color: 'var(--mu)', marginTop: 3 }}>{MONTHS[m - 1]} {y} · live FX · base {base}</p>
       </div>
 
       <div style={{ margin: '16px 0' }}>
-        <MonthPicker selected={selectedMonth} />
+        <MonthPicker selected={selectedMonth} available={availableMonths} />
       </div>
 
       {needsReviewCount > 0 && (
-        <div style={{
-          background: 'var(--acc-l)', border: '0.5px solid rgba(186,117,23,.3)',
-          borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: 14,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <span style={{ fontSize: 12, color: 'var(--acc)' }}>
-            {needsReviewCount} transaction{needsReviewCount > 1 ? 's' : ''} need review
-          </span>
-          <a href="/dashboard/transactions" style={{ fontSize: 12, fontWeight: 500, color: 'var(--acc)' }}>
-            Review →
-          </a>
+        <div style={{ background: 'var(--acc-l)', border: '0.5px solid rgba(186,117,23,.3)', borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--acc)' }}>{needsReviewCount} transaction{needsReviewCount > 1 ? 's' : ''} need review</span>
+          <a href="/dashboard/transactions" style={{ fontSize: 12, fontWeight: 500, color: 'var(--acc)' }}>Review →</a>
         </div>
       )}
 
-      {/* Stat cards */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <StatCard label="Income" value={fmt(totalInc)} color="var(--grn)" />
         <StatCard label="Spend" value={fmt(totalSpend)} color="var(--red)" />
@@ -115,35 +103,36 @@ export default function DashboardClient({ transactions, budgets, rates, base, se
         <StatCard label="Savings rate" value={`${rate}%`} color="var(--acc)" />
       </div>
 
-      {/* Charts row */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-        {/* Pie */}
         <div style={{ ...cardSt, flex: 1, minWidth: 300 }}>
           <div style={{ fontSize: 12, color: 'var(--hi)', marginBottom: 12 }}>Spend by category</div>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            <ResponsiveContainer width={150} height={150}>
-              <PieChart>
-                <Pie data={catData} cx="50%" cy="50%" innerRadius={38} outerRadius={68} dataKey="value" paddingAngle={2}>
-                  {catData.map((c, i) => <Cell key={i} fill={c.color} />)}
-                </Pie>
-                <Tooltip formatter={(v: number) => fmt(v)} contentStyle={ttStyle} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ flex: 1 }}>
-              {catData.slice(0, 7).map(c => (
-                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '0.5px solid var(--bd)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <div style={{ width: 7, height: 7, borderRadius: 1, background: c.color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 11, color: 'var(--mu)' }}>{c.label}</span>
+          {catData.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--hi)', padding: '20px 0' }}>No expense data for this month yet</div>
+          ) : (
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <ResponsiveContainer width={150} height={150}>
+                <PieChart>
+                  <Pie data={catData} cx="50%" cy="50%" innerRadius={38} outerRadius={68} dataKey="value" paddingAngle={2}>
+                    {catData.map((c, i) => <Cell key={i} fill={c.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => fmt(v)} contentStyle={ttStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ flex: 1 }}>
+                {catData.slice(0, 7).map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '0.5px solid var(--bd)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: 1, background: c.color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: 'var(--mu)' }}>{c.label}</span>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmt(c.value)}</span>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmt(c.value)}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Trend */}
         <div style={{ ...cardSt, flex: 1.3, minWidth: 320 }}>
           <div style={{ fontSize: 12, color: 'var(--hi)', marginBottom: 12 }}>6-month spend trend</div>
           <ResponsiveContainer width="100%" height={170}>
@@ -164,7 +153,6 @@ export default function DashboardClient({ transactions, budgets, rates, base, se
         </div>
       </div>
 
-      {/* Recent needs-review */}
       {needsReview.length > 0 && (
         <div style={cardSt}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>

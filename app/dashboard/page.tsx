@@ -2,24 +2,32 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchFxRates } from '@/lib/fx'
 import DashboardClient from './DashboardClient'
 
-function currentMonth() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
 export default async function DashboardPage({
   searchParams,
 }: {
   searchParams: { month?: string }
 }) {
-  const month = searchParams.month ?? currentMonth()
   const supabase = createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user!.id).single()
   const base = profile?.base_currency ?? 'GBP'
 
-  // Fetch current month + previous 5 for trend
+  const { data: allTxns } = await supabase
+    .from('transactions')
+    .select('date')
+    .eq('user_id', user!.id)
+    .order('date', { ascending: false })
+
+  const availableMonths = allTxns && allTxns.length > 0
+    ? [...new Set(allTxns.map(t => t.date.substring(0, 7)))].sort((a, b) => b.localeCompare(a))
+    : []
+
+  const defaultMonth = availableMonths[0] ?? (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })()
+
+  const month = searchParams.month ?? defaultMonth
   const [y, m] = month.split('-').map(Number)
   const trendStart = new Date(y, m - 6, 1).toISOString().split('T')[0]
   const monthEnd = new Date(y, m, 0).toISOString().split('T')[0]
@@ -41,6 +49,7 @@ export default async function DashboardPage({
       base={base}
       selectedMonth={month}
       needsReviewCount={needsReview.length}
+      availableMonths={availableMonths}
     />
   )
 }
