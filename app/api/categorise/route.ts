@@ -4,6 +4,30 @@ import { createClient } from '@/lib/supabase/server'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+async function categoriseBatch(batch: { id: string; desc: string; amount: number }[]) {
+  const msg = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `Categorise these bank transactions. Return ONLY a raw JSON array, no markdown.
+Format: [{"id":"x","category":"groceries","confidence":0.9}]
+Categories: food_dining, groceries, transport, shopping, entertainment, health, bills, travel, subscriptions, income, transfer, group_expense, uncategorised
+Transactions: ${JSON.stringify(batch)}`
+    }]
+  })
+
+  let raw = ''
+  for (const block of msg.content) {
+    if (block.type === 'text') { raw = block.text; break }
+  }
+
+  const start = raw.indexOf('[')
+  const end = raw.lastIndexOf(']')
+  if (start === -1 || end === -1) throw new Error(`No array in response: ${raw.substring(0, 80)}`)
+  return JSON.parse(raw.slice(start, end + 1))
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -14,41 +38,19 @@ export async function POST(req: NextRequest) {
   if (!transactions?.length) return NextResponse.json([])
 
   try {
-    const msg = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `Categorise these bank transactions. Return ONLY a raw JSON array with no markdown, no explanation. Format: [{"id":"x","category":"groceries","confidence":0.9}]
-Valid categories: food_dining, groceries, transport, shopping, entertainment, health, bills, travel, subscriptions, income, transfer, group_expense, uncategorised
-Transactions: ${JSON.stringify(
-          transactions.map((t: { id: string; description: string; amount: number }) => ({
-            id: t.id, desc: t.description, amount: t.amount,
-          }))
-        )}`
-      }]
-    })
+    const mapped = transactions.map((t: { id: string; description: string; amount: number }) => ({
+      id: t.id, desc: t.description, amount: t.amount,
+    }))
 
-    // Extract text from any content block that has text
-    let raw = ''
-    for (const block of msg.content) {
-      if (block.type === 'text') { raw = block.text; break }
+    // Process in batches of 20 to avoid token limits
+    const BATCH = 20
+    const results: unknown[] = []
+    for (let i = 0; i < mapped.length; i += BATCH) {
+      const batch = mapped.slice(i, i + BATCH)
+      const batchResults = await categoriseBatch(batch)
+      results.push(...batchResults)
     }
 
-    if (!raw) {
-      return NextResponse.json({ error: 'empty_response' }, { status: 500 })
-    }
-
-    const start = raw.indexOf('[')
-    const end = raw.lastIndexOf(']')
-    if (start === -1 || end === -1) {
-      return NextResponse.json({ error: `no_array: ${raw.substring(0, 100)}` }, { status: 500 })
-    }
-
-    const results = JSON.parse(raw.slice(start, end + 1))
-    if (!Array.isArray(results)) {
-      return NextResponse.json({ error: 'not_array' }, { status: 500 })
-    }
     return NextResponse.json(results)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
