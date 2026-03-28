@@ -13,6 +13,7 @@ export const CATEGORIES: CategoryDefinition[] = [
   { id: 'income',         label: 'Income',              color: '#27500A' },
   { id: 'transfer',       label: 'Transfer (ignored)',  color: '#888780' },
   { id: 'group_expense',  label: 'Group expense',       color: '#854F0B' },
+  { id: 'misc',           label: 'Misc',                color: '#7B6F72' },
   { id: 'uncategorised',  label: 'Uncategorised',       color: '#5F5E5A' },
 ]
 
